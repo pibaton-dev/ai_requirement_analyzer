@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: requirement-analyzer-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/requirement_analyzer}
+    username: ${SPRING_DATASOURCE_USERNAME:requirement_analyzer}
+    password: ${SPRING_DATASOURCE_PASSWORD:local-development-only}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+ai-service:
+  base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
