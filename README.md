@@ -12,7 +12,7 @@ The repository is organized into three independently buildable codebases:
 
 The application features are intentionally not implemented yet; they are scheduled by milestone in the [foundation design](docs/FOUNDATION_DESIGN.md).
 
-Current implementation status: the platform scaffold, account registration/login/session management, profile editing, and owner-scoped project management APIs are implemented. The analysis and AI workflows remain future milestones.
+Current implementation status: the platform scaffold, account registration/login/session management, profile editing, owner-scoped project management APIs, document upload/storage management, and the AI service analysis contract foundation are implemented. The async job orchestration and full human-review workflow remain the next milestones.
 
 ### Run locally
 

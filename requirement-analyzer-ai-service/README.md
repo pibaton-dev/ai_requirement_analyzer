@@ -1,6 +1,15 @@
 # Requirement Analyzer AI Service
 
-Python 3.12+, FastAPI, Pydantic, and LangGraph service. The service is currently a health-checked scaffold; analysis routes and parsers are implemented in a later milestone.
+Python 3.12+, FastAPI, Pydantic, and LangGraph service. The service includes a health endpoint and a typed analysis contract for structured requirement extraction. The async job orchestration, parser stack, and full LangGraph workflow are planned for the next milestone.
+
+## Service contract
+
+The service exposes a typed request/response model for project analysis:
+
+- `POST /api/v1/analyze`
+- Request body includes `projectId`, `projectName`, optional `text`, and optional `documentIds`
+- Response includes `projectId`, `projectName`, `correlationId`, `requirements`, `issues`, and `summary`
+- Validation rejects empty payloads with a `422` error
 
 ## Local development
 
