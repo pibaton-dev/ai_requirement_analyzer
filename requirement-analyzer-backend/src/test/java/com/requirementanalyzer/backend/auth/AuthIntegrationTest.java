@@ -37,6 +37,7 @@ class AuthIntegrationTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(cookie().exists("refresh_token"))
+                .andExpect(cookie().httpOnly("refresh_token", true))
                 .andExpect(jsonPath("$.user.email").value("analyst@example.com"))
                 .andReturn();
 
@@ -54,6 +55,22 @@ class AuthIntegrationTest {
                         .content("{\"displayName\":\"Business Analyst\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.displayName").value("Business Analyst"));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"analyst@example.com","password":"correct-horse-battery"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(cookie().httpOnly("refresh_token", true));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"analyst@example.com","password":"incorrect-password"}
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
     }
 
     @Test

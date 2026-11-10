@@ -1,0 +1,14 @@
+CREATE TABLE projects (
+    id UUID PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    description VARCHAR(5000),
+    domain VARCHAR(120),
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT projects_status_check CHECK (status IN ('DRAFT', 'IN_PROGRESS', 'ANALYSIS_COMPLETED', 'ARCHIVED'))
+);
+
+CREATE INDEX projects_owner_updated_idx ON projects(owner_id, updated_at DESC, id DESC);

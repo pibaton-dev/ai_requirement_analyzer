@@ -12,6 +12,8 @@ The repository is organized into three independently buildable codebases:
 
 The application features are intentionally not implemented yet; they are scheduled by milestone in the [foundation design](docs/FOUNDATION_DESIGN.md).
 
+Current implementation status: the platform scaffold, account registration/login/session management, profile editing, and owner-scoped project management APIs are implemented. The analysis and AI workflows remain future milestones.
+
 ### Run locally
 
 Requirements: Docker with Compose. Copy `.env.example` to `.env`, then run:
@@ -27,9 +29,14 @@ Stop the containers with `docker compose down`. Add `-v` only when you intend to
 ### Verify individual codebases
 
 ```bash
-cd requirement-analyzer-frontend && npm ci && npm run typecheck && npm test && npm run build
-cd requirement-analyzer-backend && mvn test
-cd requirement-analyzer-ai-service && python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt && .venv/bin/python -m pytest
+npm --prefix requirement-analyzer-frontend ci
+npm --prefix requirement-analyzer-frontend run typecheck
+npm --prefix requirement-analyzer-frontend test
+npm --prefix requirement-analyzer-frontend run build
+mvn -f requirement-analyzer-backend/pom.xml verify
+python3 -m venv requirement-analyzer-ai-service/.venv
+requirement-analyzer-ai-service/.venv/bin/python -m pip install -r requirement-analyzer-ai-service/requirements.txt
+requirement-analyzer-ai-service/.venv/bin/python -m pytest requirement-analyzer-ai-service/tests
 ```
 
 CI runs the same codebase-specific checks. No production secrets or real LLM API key are needed for this platform milestone.
