@@ -393,6 +393,7 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
   const [answerText, setAnswerText] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const loadProject = useMemo(() => async () => {
     if (!projectId) return
@@ -467,6 +468,36 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
         ? (requestError as { response?: { data?: { detail?: string; title?: string } } }).response?.data?.detail
         : 'Unable to create the review version.'
       setError(message || 'Unable to create the review version.')
+    }
+  }
+
+  const exportVersionJson = async () => {
+    if (!projectId || !version) return
+
+    setIsExporting(true)
+    try {
+      const response = await api.get(`/projects/${projectId}/analysis-versions/${version.id}/export/json`, {
+        headers: authHeader(auth.token),
+        responseType: 'blob',
+      })
+
+      const blob = new Blob([response.data], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const safeName = (project?.name ?? 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      link.href = url
+      link.download = `${safeName || 'project'}-v${version.versionNumber}.json`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (requestError: unknown) {
+      const message = requestError && typeof requestError === 'object' && 'response' in requestError
+        ? (requestError as { response?: { data?: { detail?: string; title?: string } } }).response?.data?.detail
+        : 'Unable to export the review package.'
+      setError(message || 'Unable to export the review package.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -585,7 +616,14 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
                 <strong>{selectedJob.status}</strong>
                 <p>{selectedJob.summary || selectedJob.errorMessage || 'Analysis is active.'}</p>
                 {selectedJob.status === 'SUCCEEDED' && (
-                  <button type="button" className="secondary-button" onClick={createVersion}>Create review version</button>
+                  <>
+                    <button type="button" className="secondary-button" onClick={createVersion}>Create review version</button>
+                    {version && (
+                      <button type="button" className="ghost-button" onClick={exportVersionJson} disabled={isExporting}>
+                        {isExporting ? 'Exporting...' : 'Export JSON'}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}

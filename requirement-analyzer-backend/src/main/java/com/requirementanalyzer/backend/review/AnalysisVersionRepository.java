@@ -9,4 +9,6 @@ public interface AnalysisVersionRepository extends JpaRepository<AnalysisVersion
     long countByProject_Id(UUID projectId);
 
     Optional<AnalysisVersion> findByIdAndProject_IdAndProject_Owner_Id(UUID versionId, UUID projectId, UUID ownerId);
+
+    Optional<AnalysisVersion> findTopByProject_IdAndProject_Owner_IdOrderByVersionNumberDesc(UUID projectId, UUID ownerId);
 }
