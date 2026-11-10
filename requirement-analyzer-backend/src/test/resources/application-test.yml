@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:requirement-analyzer;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+security:
+  jwt:
+    secret: test-only-signing-key-that-is-at-least-thirty-two-bytes
+  refresh-cookie:
+    secure: false
+  cors:
+    allowed-origin: http://localhost:5173

@@ -8,6 +8,15 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/requirement_analyzer}
     username: ${SPRING_DATASOURCE_USERNAME:requirement_analyzer}
     password: ${SPRING_DATASOURCE_PASSWORD:local-development-only}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
 
 management:
   endpoints:
@@ -21,3 +30,13 @@ management:
 
 ai-service:
   base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:local-development-only-change-this-secret-please}
+    access-token-ttl: 15m
+  refresh-token-ttl: 14d
+  refresh-cookie:
+    secure: ${REFRESH_COOKIE_SECURE:false}
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}

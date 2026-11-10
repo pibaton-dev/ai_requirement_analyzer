@@ -1,0 +1,37 @@
+CREATE TABLE roles (
+    id UUID PRIMARY KEY,
+    name VARCHAR(24) NOT NULL UNIQUE
+);
+
+INSERT INTO roles (id, name) VALUES
+    ('00000000-0000-0000-0000-000000000001', 'ADMIN'),
+    ('00000000-0000-0000-0000-000000000002', 'USER');
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(254) NOT NULL UNIQUE,
+    display_name VARCHAR(120) NOT NULL,
+    password_hash VARCHAR(100) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT users_status_check CHECK (status IN ('ACTIVE', 'DISABLED', 'LOCKED'))
+);
+
+CREATE TABLE user_roles (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
+    PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX refresh_tokens_user_active_idx ON refresh_tokens(user_id, revoked_at, expires_at);
+CREATE INDEX users_status_idx ON users(status);
