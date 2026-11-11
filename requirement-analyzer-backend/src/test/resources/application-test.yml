@@ -16,3 +16,6 @@ security:
     secure: false
   cors:
     allowed-origin: http://localhost:5173
+
+ai-service:
+  api-key: test-service-token

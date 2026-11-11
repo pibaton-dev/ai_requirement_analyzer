@@ -22,6 +22,7 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      AI_SERVICE_API_KEY: ${AI_SERVICE_API_KEY:-local-development-only-change-this-service-token}
     ports:
       - "${AI_SERVICE_PORT:-8000}:8000"
     healthcheck:
@@ -38,6 +39,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-requirement_analyzer}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
       AI_SERVICE_BASE_URL: http://ai-service:8000
+      AI_SERVICE_API_KEY: ${AI_SERVICE_API_KEY:-local-development-only-change-this-service-token}
       JWT_SECRET: ${JWT_SECRET:-local-development-only-change-this-secret-please}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}

@@ -30,6 +30,7 @@ management:
 
 ai-service:
   base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+  api-key: ${AI_SERVICE_API_KEY:local-development-only-change-this-service-token}
 
 app:
   document-storage:

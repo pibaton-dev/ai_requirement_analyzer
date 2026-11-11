@@ -5,7 +5,7 @@ The Docker Compose configuration in the repository is intended for local develop
 ## Before deploying
 
 - Put a TLS-terminating reverse proxy or load balancer in front of the application. Do not expose PostgreSQL or internal service ports publicly.
-- Provide unique, high-entropy values for `POSTGRES_PASSWORD` and `JWT_SECRET` through the deployment platform's secret store. Do not use the example defaults or commit a populated `.env` file.
+- Provide unique, high-entropy values for `POSTGRES_PASSWORD`, `JWT_SECRET`, and `AI_SERVICE_API_KEY` through the deployment platform's secret store. Do not use the example defaults or commit a populated `.env` file.
 - Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin and set `REFRESH_COOKIE_SECURE=true`.
 - Configure the AI service provider and API credentials through secrets as needed. The default mock provider is for development and produces deterministic placeholder analysis.
 - Persist and back up the PostgreSQL data and uploaded-document storage. Apply the documented retention and deletion policies to both.

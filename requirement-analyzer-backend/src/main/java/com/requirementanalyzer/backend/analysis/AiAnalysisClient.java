@@ -1,5 +1,7 @@
 package com.requirementanalyzer.backend.analysis;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
@@ -13,11 +15,16 @@ import java.util.UUID;
 public class AiAnalysisClient {
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
 
-    public AiAnalysisClient(@Value("${ai-service.base-url}") String baseUrl) {
+    public AiAnalysisClient(@Value("${ai-service.base-url}") String baseUrl,
+                            @Value("${ai-service.api-key}") String apiKey,
+                            ObjectMapper objectMapper) {
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
+                .defaultHeader("X-Service-Token", apiKey)
                 .build();
+        this.objectMapper = objectMapper;
     }
 
     public AiAnalysisResponse submitAnalysis(AnalysisJob job) {
@@ -27,11 +34,18 @@ public class AiAnalysisClient {
                 job.getText(),
                 parseDocumentIds(job.getDocumentIds())
         );
+        byte[] requestBody;
+        try {
+            requestBody = objectMapper.writeValueAsBytes(request);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Analysis request could not be encoded.", exception);
+        }
 
         var response = restClient.post()
                 .uri("/api/v1/analyze")
+                .header("X-Correlation-ID", job.getCorrelationId())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
+                .body(requestBody)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
                     throw new IllegalStateException("AI service returned status " + httpResponse.getStatusCode());

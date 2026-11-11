@@ -1,5 +1,7 @@
 package com.requirementanalyzer.backend.analysis;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -8,6 +10,9 @@ import java.util.UUID;
 
 @Component
 public class AnalysisJobProcessor {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AnalysisJobProcessor.class);
+    private static final String FAILURE_MESSAGE = "Analysis could not be completed. Please try again.";
 
     private final AnalysisJobRepository analysisJobRepository;
     private final AiAnalysisClient aiAnalysisClient;
@@ -32,7 +37,9 @@ public class AnalysisJobProcessor {
             job.markSucceeded(response.summary(), response.correlationId() == null ? correlationId : response.correlationId());
             analysisJobRepository.save(job);
         } catch (Exception exception) {
-            job.markFailed(exception.getMessage() == null ? "AI analysis failed." : exception.getMessage(), correlationId);
+            LOGGER.error("Analysis failed for job {} with correlation {} ({}).",
+                    jobId, correlationId, exception.getClass().getSimpleName());
+            job.markFailed(FAILURE_MESSAGE, correlationId);
             analysisJobRepository.save(job);
         }
     }
