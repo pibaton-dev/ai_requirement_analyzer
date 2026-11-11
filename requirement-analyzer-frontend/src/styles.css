@@ -85,6 +85,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .list-block { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
 .list-block li { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid #d6dfd7; border-radius: 12px; background: rgba(255,255,255,0.5); }
 .list-block small { color: #586760; }
+.document-list li { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.document-choice { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
+.document-choice input { width: auto; }
+.document-choice span { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.document-choice small { color: #586760; }
 .answer-row { display: flex; gap: 8px; margin-top: 8px; }
 .answer-row input { flex: 1; }
 .job-list { display: grid; gap: 10px; margin-top: 12px; }
@@ -93,6 +98,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .job-item small { color: #586760; }
 .selection-summary { margin-top: 12px; padding-top: 12px; border-top: 1px solid #d6dfd7; }
 .selection-summary p { color: #586760; }
+.export-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .stacked-panel { display: grid; gap: 24px; }
 .compact { gap: 12px; }
 @media (max-width: 900px) {

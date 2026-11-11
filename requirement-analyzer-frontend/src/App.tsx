@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { FormEvent } from 'react'
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router'
 import { api } from './lib/api'
 
@@ -45,6 +46,16 @@ type AnalysisJob = {
   updatedAt: string
   startedAt?: string | null
   completedAt?: string | null
+}
+
+type ProjectDocument = {
+  id: string
+  projectId: string
+  fileName: string
+  contentType: string
+  fileSize: number
+  status: string
+  createdAt: string
 }
 
 type ReviewVersion = {
@@ -381,8 +392,11 @@ function DashboardPage({ auth, onSignOut }: { auth: AuthState; onSignOut: () => 
 
 function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: () => void }) {
   const { projectId } = useParams()
-  const navigate = useNavigate()
   const [project, setProject] = useState<Project | null>(null)
+  const [isLoadingProject, setIsLoadingProject] = useState(true)
+  const [documents, setDocuments] = useState<ProjectDocument[]>([])
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([])
+  const [fileInputKey, setFileInputKey] = useState(0)
   const [jobs, setJobs] = useState<AnalysisJob[]>([])
   const [selectedJob, setSelectedJob] = useState<AnalysisJob | null>(null)
   const [text, setText] = useState('')
@@ -393,16 +407,22 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
   const [answerText, setAnswerText] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [exportingFormat, setExportingFormat] = useState<'json' | 'pdf' | 'xlsx' | null>(null)
 
   const loadProject = useMemo(() => async () => {
     if (!projectId) return
 
+    setError('')
     const projectResponse = await api.get<Project>(`/projects/${projectId}`, { headers: authHeader(auth.token) })
     setProject(projectResponse.data)
 
-    const jobsResponse = await api.get(`/projects/${projectId}/analyses`, { headers: authHeader(auth.token) })
+    const [jobsResponse, documentsResponse] = await Promise.all([
+      api.get(`/projects/${projectId}/analyses`, { headers: authHeader(auth.token) }),
+      api.get(`/projects/${projectId}/documents`, { headers: authHeader(auth.token) }),
+    ])
     const nextJobs = toItems<AnalysisJob>(jobsResponse.data)
+    setDocuments(toItems<ProjectDocument>(documentsResponse.data))
     setJobs(nextJobs)
     if (nextJobs.length > 0) {
       setSelectedJob((current) => current ?? nextJobs[nextJobs.length - 1])
@@ -410,7 +430,65 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
   }, [auth.token, projectId])
 
   useEffect(() => {
-    loadProject().catch(() => setError('Unable to load project data.'))
+    setIsLoadingProject(true)
+    setProject(null)
+    setDocuments([])
+    setSelectedDocumentIds([])
+    setJobs([])
+    setSelectedJob(null)
+    setVersion(null)
+    setReview(null)
+  }, [projectId])
+
+  const uploadDocument = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!projectId) return
+
+    const fileInput = event.currentTarget.elements.namedItem('document') as HTMLInputElement | null
+    const file = fileInput?.files?.[0]
+    if (!file) {
+      setError('Choose a document to upload.')
+      return
+    }
+
+    setError('')
+    setIsUploading(true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const { data } = await api.post<ProjectDocument>(`/projects/${projectId}/documents`, body, {
+        headers: authHeader(auth.token),
+      })
+      setDocuments((current) => [data, ...current])
+      setFileInputKey((current) => current + 1)
+    } catch (requestError: unknown) {
+      const message = requestError && typeof requestError === 'object' && 'response' in requestError
+        ? (requestError as { response?: { data?: { detail?: string; title?: string } } }).response?.data?.detail
+        : 'Unable to upload the document.'
+      setError(message || 'Unable to upload the document.')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const deleteDocument = async (documentId: string) => {
+    setError('')
+    try {
+      await api.delete(`/documents/${documentId}`, { headers: authHeader(auth.token) })
+      setDocuments((current) => current.filter((document) => document.id !== documentId))
+      setSelectedDocumentIds((current) => current.filter((id) => id !== documentId))
+    } catch (requestError: unknown) {
+      const message = requestError && typeof requestError === 'object' && 'response' in requestError
+        ? (requestError as { response?: { data?: { detail?: string; title?: string } } }).response?.data?.detail
+        : 'Unable to delete the document.'
+      setError(message || 'Unable to delete the document.')
+    }
+  }
+
+  useEffect(() => {
+    loadProject()
+      .catch(() => setError('Unable to load project data.'))
+      .finally(() => setIsLoadingProject(false))
   }, [loadProject])
 
   useEffect(() => {
@@ -438,12 +516,19 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
   const submitAnalysis = async (event: FormEvent) => {
     event.preventDefault()
     if (!projectId) return
+    if (!text.trim() && selectedDocumentIds.length === 0) {
+      setError('Enter analysis text or select at least one document.')
+      return
+    }
 
     setError('')
     setIsSubmitting(true)
 
     try {
-      const { data } = await api.post(`/projects/${projectId}/analyses`, { text }, { headers: authHeader(auth.token) })
+      const { data } = await api.post(`/projects/${projectId}/analyses`, {
+        text,
+        documentIds: selectedDocumentIds,
+      }, { headers: authHeader(auth.token) })
       setSelectedJob(data)
       setJobs((current) => [data, ...current])
       setText('')
@@ -471,22 +556,27 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
     }
   }
 
-  const exportVersionJson = async () => {
+  const exportVersion = async (format: 'json' | 'pdf' | 'xlsx') => {
     if (!projectId || !version) return
 
-    setIsExporting(true)
+    setExportingFormat(format)
     try {
-      const response = await api.get(`/projects/${projectId}/analysis-versions/${version.id}/export/json`, {
+      const response = await api.get(`/projects/${projectId}/analysis-versions/${version.id}/export/${format}`, {
         headers: authHeader(auth.token),
         responseType: 'blob',
       })
 
-      const blob = new Blob([response.data], { type: 'application/json' })
+      const contentTypes = {
+        json: 'application/json',
+        pdf: 'application/pdf',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }
+      const blob = new Blob([response.data], { type: contentTypes[format] })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       const safeName = (project?.name ?? 'project').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
       link.href = url
-      link.download = `${safeName || 'project'}-v${version.versionNumber}.json`
+      link.download = `${safeName || 'project'}-v${version.versionNumber}.${format}`
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -497,7 +587,7 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
         : 'Unable to export the review package.'
       setError(message || 'Unable to export the review package.')
     } finally {
-      setIsExporting(false)
+      setExportingFormat(null)
     }
   }
 
@@ -563,7 +653,21 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
   }
 
   if (!project) {
-    return <div className="workspace shell"><p className="muted">Loading project…</p></div>
+    return (
+      <main className="workspace shell">
+        <p className="eyebrow">PROJECT</p>
+        <section className="panel">
+          {isLoadingProject ? (
+            <p className="muted">Loading project…</p>
+          ) : (
+            <>
+              <p className="form-error" role="alert">{error || 'Unable to load project data.'}</p>
+              <Link to="/" className="ghost-button inline-link">Back to dashboard</Link>
+            </>
+          )}
+        </section>
+      </main>
+    )
   }
 
   return (
@@ -590,12 +694,58 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
       <section className="layout-two-column align-top">
         <div className="stacked-panel">
           <div className="panel">
+            <p className="eyebrow">DOCUMENTS</p>
+            <h3>Project files</h3>
+            <form onSubmit={uploadDocument} className="stacked-form compact">
+              <label>
+                <span>Upload PDF, DOCX, TXT, or XLSX (up to 10 MB)</span>
+                <input key={fileInputKey} name="document" type="file" accept=".pdf,.docx,.txt,.xlsx" />
+              </label>
+              <button type="submit" className="secondary-button" disabled={isUploading}>
+                {isUploading ? 'Uploading...' : 'Upload document'}
+              </button>
+            </form>
+            {documents.length === 0 ? (
+              <p className="muted">No documents uploaded yet.</p>
+            ) : (
+              <ul className="list-block document-list">
+                {documents.map((document) => (
+                  <li key={document.id}>
+                    <label className="document-choice">
+                      <input
+                        type="checkbox"
+                        checked={selectedDocumentIds.includes(document.id)}
+                        onChange={(event) => setSelectedDocumentIds((current) => (
+                          event.target.checked
+                            ? [...current, document.id]
+                            : current.filter((id) => id !== document.id)
+                        ))}
+                      />
+                      <span>
+                        <strong>{document.fileName}</strong>
+                        <small>{(document.fileSize / 1024).toFixed(1)} KB · {document.status}</small>
+                      </span>
+                    </label>
+                    <button type="button" className="ghost-button" onClick={() => deleteDocument(document.id)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="panel">
             <p className="eyebrow">ANALYZE</p>
             <h3>Submit new analysis</h3>
             <form onSubmit={submitAnalysis} className="stacked-form compact">
-              <textarea value={text} onChange={(event) => setText(event.target.value)} rows={7} placeholder="Paste a user story, product brief, or requirement text here." required />
+              <label>
+                <span>Requirement text (optional when documents are selected)</span>
+                <textarea value={text} onChange={(event) => setText(event.target.value)} rows={7} placeholder="Paste a user story, product brief, or requirement text here." />
+              </label>
+              <p className="muted">{selectedDocumentIds.length} document{selectedDocumentIds.length === 1 ? '' : 's'} selected</p>
               {error && <p className="form-error">{error}</p>}
-              <button className="primary-button" type="submit" disabled={isSubmitting}>
+              <button className="primary-button" type="submit" disabled={isSubmitting || (!text.trim() && selectedDocumentIds.length === 0)}>
                 {isSubmitting ? 'Sending...' : 'Run analysis'}
               </button>
             </form>
@@ -619,9 +769,19 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
                   <>
                     <button type="button" className="secondary-button" onClick={createVersion}>Create review version</button>
                     {version && (
-                      <button type="button" className="ghost-button" onClick={exportVersionJson} disabled={isExporting}>
-                        {isExporting ? 'Exporting...' : 'Export JSON'}
-                      </button>
+                      <div className="export-actions" aria-label="Export review version">
+                        {(['json', 'pdf', 'xlsx'] as const).map((format) => (
+                          <button
+                            key={format}
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => exportVersion(format)}
+                            disabled={exportingFormat !== null}
+                          >
+                            {exportingFormat === format ? 'Exporting...' : `Export ${format.toUpperCase()}`}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </>
                 )}

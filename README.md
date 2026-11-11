@@ -2,7 +2,7 @@
 
 The initial SRS, architecture, API proposal, data model, security boundaries, and milestone plan are in [docs/FOUNDATION_DESIGN.md](docs/FOUNDATION_DESIGN.md).
 
-## Milestone 1: Local Platform
+## Project status
 
 The repository is organized into three independently buildable codebases:
 
@@ -10,9 +10,7 @@ The repository is organized into three independently buildable codebases:
 - `requirement-analyzer-backend/`: Java 21, Spring Boot, Maven.
 - `requirement-analyzer-ai-service/`: Python 3.12+, FastAPI, Pydantic, LangGraph.
 
-The application features are intentionally not implemented yet; they are scheduled by milestone in the [foundation design](docs/FOUNDATION_DESIGN.md).
-
-Current implementation status: the platform scaffold, account registration/login/session management, profile editing, owner-scoped project management APIs, document upload/storage management, the AI service analysis contract foundation, async job orchestration, and the review/versioning domain are implemented. The frontend application and export/hardening milestone remain the next workstreams.
+The platform scaffold, identity/session management, owner-scoped project and document APIs, asynchronous analysis, review/versioning domain, and frontend application are implemented. Current work is on Milestone 8: multi-format exports, critical journey verification, and operational hardening. See the [milestone plan](docs/FOUNDATION_DESIGN.md) and [deployment notes](docs/DEPLOYMENT.md).
 
 ### Run locally
 
@@ -39,4 +37,4 @@ requirement-analyzer-ai-service/.venv/bin/python -m pip install -r requirement-a
 requirement-analyzer-ai-service/.venv/bin/python -m pytest requirement-analyzer-ai-service/tests
 ```
 
-CI runs the same codebase-specific checks. No production secrets or real LLM API key are needed for this platform milestone.
+CI runs the same codebase-specific checks. No production secrets or real LLM API key are needed for local verification.
