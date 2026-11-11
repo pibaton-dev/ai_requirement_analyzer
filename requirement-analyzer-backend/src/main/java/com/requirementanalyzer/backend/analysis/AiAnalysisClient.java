@@ -41,6 +41,7 @@ public class AiAnalysisClient {
         this.apiKey = apiKey;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
         this.objectMapper = objectMapper;
         this.documentRepository = documentRepository;
