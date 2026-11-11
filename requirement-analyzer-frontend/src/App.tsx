@@ -767,7 +767,7 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
                 <p>{selectedJob.summary || selectedJob.errorMessage || 'Analysis is active.'}</p>
                 {selectedJob.status === 'SUCCEEDED' && (
                   <>
-                    <button type="button" className="secondary-button" onClick={createVersion}>Create review version</button>
+                    <button type="button" className="secondary-button" onClick={createVersion}>Open review draft</button>
                     {version && (
                       <div className="export-actions" aria-label="Export review version">
                         {(['json', 'pdf', 'xlsx'] as const).map((format) => (
@@ -795,7 +795,7 @@ function ProjectDetailPage({ auth, onSignOut }: { auth: AuthState; onSignOut: ()
           <h3>Human review workspace</h3>
 
           {!version && !review ? (
-            <p className="muted">No review version has been created yet. Run a successful analysis and create a review draft.</p>
+            <p className="muted">Run a successful analysis, then open its review draft.</p>
           ) : (
             <>
               <div className="version-card">

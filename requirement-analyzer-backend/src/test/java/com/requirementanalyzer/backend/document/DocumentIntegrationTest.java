@@ -112,6 +112,25 @@ class DocumentIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void uploadRejectsContentThatDoesNotMatchTheDeclaredFileType() throws Exception {
+        String accessToken = register("doc-content-validation@example.com");
+        MvcResult projectResult = mockMvc.perform(post("/api/v1/projects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Content validation project\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String projectId = JsonPath.read(projectResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(multipart("/api/v1/projects/{projectId}/documents", projectId)
+                        .file(new MockMultipartFile("file", "requirements.pdf", "application/pdf",
+                                "This is not a PDF.".getBytes(StandardCharsets.UTF_8)))
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_DOCUMENT_CONTENT"));
+    }
+
     private String register(String email) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)

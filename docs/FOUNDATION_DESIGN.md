@@ -1,6 +1,6 @@
 # AI Requirement Analyzer: Foundation Design
 
-Status: Proposal for review. Implementation begins after approval.
+Status: Implementation in progress. Decisions in Section 2 remain proposed unless confirmed separately.
 
 ## 1. Product Scope
 
@@ -233,19 +233,21 @@ Errors use Spring `ProblemDetail` with stable `type`, `title`, `status`, `detail
 
 ## 12. Milestones
 
-| Milestone | Scope and exit criteria |
-|---|---|
-| 0. Foundation review | This SRS/design, decisions confirmed, technology boundaries and contracts reviewed. No application implementation yet. |
-| 1. Repository and local platform | Three codebases, compatible pinned dependencies, Compose PostgreSQL, environment examples, health checks, CI skeleton, and documented startup; builds/tests run. |
-| 2. Backend identity and project core | Flyway schema, registration/login/refresh/logout, roles/account status, project APIs, ownership enforcement, validation, OpenAPI, unit/integration/security tests. |
-| 3. Document management | Private storage abstraction, secure upload/download/delete, processing metadata, duplicate and content validation, tests. |
-| 4. AI service foundation | FastAPI contracts, provider abstraction/mock provider, parsers, Pydantic schemas, correlation/error handling, isolated tests. |
-| 5. Async analysis and extraction | Persisted jobs, authenticated Spring-to-AI client, bounded background processing, LangGraph workflow, traceable structured extraction, retries/idempotency and tests. |
-| 6. Review domain | Stories, criteria, rules, issues, questions, priorities; version snapshots, edit/approve/reject/manual-add/answer workflow, audit history, tests. |
-| 7. Frontend application | Auth, dashboard, projects, documents, analysis progress/history, results and review views, validation/loading/error/empty states, responsive and accessibility checks. |
-| 8. Exports and hardening | JSON/PDF/Excel exports, end-to-end critical journeys, security review, observability, failure handling, deployment docs and runnable full-stack verification. |
+| Milestone | Scope and exit criteria | Implementation status |
+|---|---|---|
+| 0. Foundation review | This SRS/design, decisions confirmed, technology boundaries and contracts reviewed. | **Partial** — requirements and architecture are documented; retention, admin bootstrap, and other proposed defaults are not recorded as confirmed. |
+| 1. Repository and local platform | Three codebases, compatible pinned dependencies, Compose PostgreSQL, environment examples, health checks, CI skeleton, and documented startup; builds/tests run. | **Complete** — Compose, CI, health checks, and startup are present and have been verified. |
+| 2. Backend identity and project core | Flyway schema, registration/login/refresh/logout, roles/account status, project APIs, ownership enforcement, validation, OpenAPI, unit/integration/security tests. | **Complete for the implemented scope** — auth, profile, role/status checks, owner-scoped project APIs, migrations, OpenAPI, and integration tests are present. A documented admin bootstrap is still absent. |
+| 3. Document management | Private storage abstraction, secure upload/download/delete, processing metadata, duplicate and content validation, tests. | **Partial** — private storage, metadata, size/type checks, duplicate detection, authorization, and PDF/DOCX/TXT/XLSX parsing are present. Malware scanning and durable processing-state transitions are not implemented. |
+| 4. AI service foundation | FastAPI contracts, provider abstraction/mock provider, parsers, Pydantic schemas, correlation/error handling, isolated tests. | **Partial** — typed contracts, mock provider, parser stack, and tests are present. Only deterministic mock analysis is configured; a real provider adapter and LangGraph workflow are missing. |
+| 5. Async analysis and extraction | Persisted jobs, authenticated Spring-to-AI client, bounded background processing, LangGraph workflow, traceable structured extraction, retries/idempotency and tests. | **Partial** — persisted async jobs, auth between services, idempotency, document parsing, and persistence of generated requirements as pending-review drafts are present. Retry/cancel, source traceability, rich extraction, and the planned workflow are missing. |
+| 6. Review domain | Stories, criteria, rules, issues, questions, priorities; version snapshots, edit/approve/reject/manual-add/answer workflow, audit history, tests. | **Partial** — requirement edits/status changes, manual additions, questions, versioning, and audit events exist. Stories, acceptance criteria, business rules, issues, original-value revisions, and revised analysis after answers are not implemented. |
+| 7. Frontend application | Auth, dashboard, projects, documents, analysis progress/history, results and review views, validation/loading/error/empty states, responsive and accessibility checks. | **Partial** — core auth/project/document/analysis/review/export UI exists. Dedicated views, result filtering/pagination, complete review types, and accessibility/end-to-end verification remain. |
+| 8. Exports and hardening | JSON/PDF/Excel exports, end-to-end critical journeys, security review, observability, failure handling, deployment docs and runnable full-stack verification. | **Partial** — JSON/PDF/XLSX exports, deployment notes, and runnable Compose setup exist. Critical-journey E2E, a completed security review, and production operational controls remain. |
 
 Each milestone will follow: objective/design, entities and API changes, implementation, validation/error handling, automated tests, executed verification, documentation, and remaining work. Later dependent milestones will not be represented as complete before their prerequisites are verified.
+
+Comparison against `AI_Requirement_Analyzer_Master_Prompt 1.md`: the primary remaining product gaps are the configurable LLM/LangGraph pipeline and structured generation of stories, acceptance criteria, business rules, issues, questions, priorities, and source evidence. The mock provider returns one text-derived draft requirement only; the database and UI do not yet represent the full requested result package.
 
 ## 13. Proposed Initial Folder Layout
 

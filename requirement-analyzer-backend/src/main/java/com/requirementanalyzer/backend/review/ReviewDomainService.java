@@ -2,6 +2,7 @@ package com.requirementanalyzer.backend.review;
 
 import com.requirementanalyzer.backend.analysis.AnalysisJob;
 import com.requirementanalyzer.backend.analysis.AnalysisJobRepository;
+import com.requirementanalyzer.backend.analysis.AiAnalysisClient;
 import com.requirementanalyzer.backend.auth.UserAccount;
 import com.requirementanalyzer.backend.auth.UserAccountRepository;
 import com.requirementanalyzer.backend.common.DomainException;
@@ -9,6 +10,7 @@ import com.requirementanalyzer.backend.project.Project;
 import com.requirementanalyzer.backend.project.ProjectRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -51,15 +53,55 @@ public class ReviewDomainService {
         if (!analysisJob.getProject().getId().equals(projectId)) {
             throw new DomainException(HttpStatus.NOT_FOUND, "ANALYSIS_JOB_NOT_FOUND", "Analysis job was not found.");
         }
+        var existingVersion = analysisVersionRepository.findByAnalysisJob_Id(analysisJobId);
+        if (existingVersion.isPresent()) {
+            return toResponse(existingVersion.get());
+        }
 
-        int versionNumber = (int) (analysisVersionRepository.countByProject_Id(projectId) + 1L);
+        return toResponse(createVersionRecord(ownerId, project, analysisJob));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void persistAnalysisResult(UUID ownerId, UUID projectId, UUID analysisJobId,
+                                     AiAnalysisClient.AiAnalysisResponse response) {
+        if (!projectId.equals(response.projectId())) {
+            throw new IllegalStateException("AI response project does not match the analysis job.");
+        }
+        ReviewDtos.AnalysisVersionResponse savedVersion = createVersion(ownerId, projectId, analysisJobId);
+        AnalysisVersion version = analysisVersionRepository.findByIdAndProject_IdAndProject_Owner_Id(
+                        savedVersion.id(), projectId, ownerId)
+                .orElseThrow(() -> new DomainException(HttpStatus.NOT_FOUND, "ANALYSIS_VERSION_NOT_FOUND",
+                        "Analysis version was not found."));
+        for (int index = 0; index < response.requirements().size(); index++) {
+            AiAnalysisClient.Requirement generated = response.requirements().get(index);
+            String requirementId = "REQ-%03d".formatted(index + 1);
+            if (requirementRecordRepository.findByAnalysisVersion_IdAndRequirementId(version.getId(), requirementId).isPresent()) {
+                continue;
+            }
+            RequirementRecord requirement = new RequirementRecord(
+                    version,
+                    requirementId,
+                    generated.title(),
+                    generated.description(),
+                    RequirementPriority.valueOf(generated.priority()),
+                    RequirementStatus.PENDING_REVIEW,
+                    RequirementSourceType.AI_GENERATED
+            );
+            requirementRecordRepository.save(requirement);
+            recordAudit(version, ownerId, ReviewAction.CREATED, "requirement", requirementId,
+                    null, RequirementStatus.PENDING_REVIEW.name(), "AI-generated requirement added for human review.");
+        }
+    }
+
+    private AnalysisVersion createVersionRecord(UUID ownerId, Project project, AnalysisJob analysisJob) {
+        int versionNumber = (int) (analysisVersionRepository.countByProject_Id(project.getId()) + 1L);
         AnalysisVersion version = new AnalysisVersion(project, analysisJob, versionNumber,
                 "Version " + versionNumber,
                 analysisJob.getSummary() == null ? "Initial analysis review" : analysisJob.getSummary());
         AnalysisVersion saved = analysisVersionRepository.save(version);
         recordAudit(saved, ownerId, ReviewAction.CREATED, "analysis_version", saved.getId().toString(), null,
                 saved.getStatus().name(), "Created review version for the analysis job.");
-        return toResponse(saved);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -92,7 +134,7 @@ public class ReviewDomainService {
                 request.description(),
                 request.priority(),
                 request.status(),
-                RequirementSourceType.AI_GENERATED
+                RequirementSourceType.MANUAL
         );
         RequirementRecord saved = requirementRecordRepository.save(requirement);
         recordAudit(version, ownerId, ReviewAction.MANUAL_ADDED, "requirement", saved.getRequirementId(),

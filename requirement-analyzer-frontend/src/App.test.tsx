@@ -109,7 +109,7 @@ describe('App', () => {
     expect(screen.getByText('0 documents selected')).toBeInTheDocument()
   })
 
-  it('creates a review version and requests PDF and Excel downloads', async () => {
+  it('opens a review version and requests PDF and Excel downloads', async () => {
     signInState()
     const job = {
       id: 'job-1',
@@ -151,7 +151,7 @@ describe('App', () => {
 
     render(<App />)
     fireEvent.click(await screen.findByRole('link', { name: /attendance platform/i }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Create review version' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Open review draft' }))
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
       `/projects/${project.id}/analysis-versions/${version.id}/review`,
       expect.any(Object),

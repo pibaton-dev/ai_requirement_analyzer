@@ -1,5 +1,6 @@
 package com.requirementanalyzer.backend.analysis;
 
+import com.requirementanalyzer.backend.review.ReviewDomainService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -16,10 +17,13 @@ public class AnalysisJobProcessor {
 
     private final AnalysisJobRepository analysisJobRepository;
     private final AiAnalysisClient aiAnalysisClient;
+    private final ReviewDomainService reviewDomainService;
 
-    public AnalysisJobProcessor(AnalysisJobRepository analysisJobRepository, AiAnalysisClient aiAnalysisClient) {
+    public AnalysisJobProcessor(AnalysisJobRepository analysisJobRepository, AiAnalysisClient aiAnalysisClient,
+                                ReviewDomainService reviewDomainService) {
         this.analysisJobRepository = analysisJobRepository;
         this.aiAnalysisClient = aiAnalysisClient;
+        this.reviewDomainService = reviewDomainService;
     }
 
     @Async
@@ -36,6 +40,8 @@ public class AnalysisJobProcessor {
             AiAnalysisClient.AiAnalysisResponse response = aiAnalysisClient.submitAnalysis(job);
             job.markSucceeded(response.summary(), response.correlationId() == null ? correlationId : response.correlationId());
             analysisJobRepository.save(job);
+            reviewDomainService.persistAnalysisResult(
+                    job.getOwner().getId(), job.getProject().getId(), job.getId(), response);
         } catch (Exception exception) {
             LOGGER.error("Analysis failed for job {} with correlation {} ({}).",
                     jobId, correlationId, exception.getClass().getSimpleName());

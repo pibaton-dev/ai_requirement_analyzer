@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from starlette.responses import JSONResponse
 
+from .document_parser import DocumentParsingError, decode_document_content, extract_document_text
 from .providers import MockAnalysisProvider
 from .schemas import AnalysisRequest, AnalysisResponse
 
@@ -64,6 +65,7 @@ app = FastAPI(
 
 provider = MockAnalysisProvider()
 logger = logging.getLogger(__name__)
+MAX_REQUEST_BYTES = 16 * 1024 * 1024
 
 app.add_middleware(CorrelationIdMiddleware)
 
@@ -111,10 +113,45 @@ async def analyze(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid service credentials.")
 
     try:
-        request = AnalysisRequest.model_validate_json(await http_request.body())
-    except (ValidationError, ValueError) as exception:
+        body = await http_request.body()
+        if len(body) > MAX_REQUEST_BYTES:
+            raise HTTPException(status_code=413, detail="Analysis request exceeds the supported size.")
+        request = AnalysisRequest.model_validate_json(body)
+    except ValidationError as exception:
+        logger.warning(
+            "analysis request rejected correlation_id=%s body_bytes=%s first_byte=%s content_length=%s transfer_encoding=%s content_type=%s errors=%s",
+            http_request.state.correlation_id,
+            len(body),
+            body[:1].hex(),
+            http_request.headers.get("content-length"),
+            http_request.headers.get("transfer-encoding"),
+            http_request.headers.get("content-type"),
+            [
+                {
+                    "location": error["loc"],
+                    "type": error["type"],
+                    "reason": error.get("ctx", {}).get("error"),
+                }
+                for error in exception.errors()
+            ],
+        )
+        raise HTTPException(status_code=422, detail="The analysis request is invalid.") from exception
+    except ValueError as exception:
         raise HTTPException(status_code=422, detail="The analysis request is invalid.") from exception
 
-    response = provider.analyze(request)
+    try:
+        total_document_bytes = 0
+        extracted_documents = []
+        for document in request.documents:
+            content = decode_document_content(document)
+            total_document_bytes += len(content)
+            if total_document_bytes > 10 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="Selected documents must total 10MB or less.")
+            extracted_documents.append(extract_document_text(document, content))
+    except DocumentParsingError as exception:
+        logger.warning("document parsing failed correlation_id=%s", http_request.state.correlation_id)
+        raise HTTPException(status_code=422, detail="One or more documents could not be parsed.") from exception
+
+    response = provider.analyze(request, extracted_documents)
     response.correlationId = http_request.state.correlation_id
     return response

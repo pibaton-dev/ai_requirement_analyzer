@@ -9,8 +9,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +71,43 @@ class AnalysisJobIntegrationTest {
                         .content("{\"text\":\"   \", \"documentIds\": []}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void analysisCannotUseAnotherUsersDocument() throws Exception {
+        String documentOwnerToken = register("analysis-document-owner@example.com");
+        String otherOwnerToken = register("analysis-other-owner@example.com");
+
+        MvcResult documentProjectResult = mockMvc.perform(post("/api/v1/projects")
+                        .header("Authorization", "Bearer " + documentOwnerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Private document project\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String documentProjectId = JsonPath.read(documentProjectResult.getResponse().getContentAsString(), "$.id");
+
+        MvcResult documentResult = mockMvc.perform(multipart("/api/v1/projects/{projectId}/documents", documentProjectId)
+                        .file(new MockMultipartFile("file", "requirements.txt", "text/plain",
+                                "Users can view their attendance.".getBytes(StandardCharsets.UTF_8)))
+                        .header("Authorization", "Bearer " + documentOwnerToken))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String documentId = JsonPath.read(documentResult.getResponse().getContentAsString(), "$.id");
+
+        MvcResult otherProjectResult = mockMvc.perform(post("/api/v1/projects")
+                        .header("Authorization", "Bearer " + otherOwnerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Other user's project\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String otherProjectId = JsonPath.read(otherProjectResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(post("/api/v1/projects/{projectId}/analyses", otherProjectId)
+                        .header("Authorization", "Bearer " + otherOwnerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentIds\":[\"%s\"]}".formatted(documentId)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
     }
 
     private String register(String email) throws Exception {

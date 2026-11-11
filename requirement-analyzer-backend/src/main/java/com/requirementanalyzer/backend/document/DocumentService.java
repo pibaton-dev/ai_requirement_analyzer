@@ -11,28 +11,33 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 @Service
 public class DocumentService {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+    private static final long MAX_EXPANDED_ARCHIVE_BYTES = 50L * 1024 * 1024;
+    private static final int MAX_ARCHIVE_ENTRIES = 2_000;
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "docx", "txt", "xlsx");
-    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
-            "application/pdf",
-            "text/plain",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.ms-excel",
-            "application/msword"
-    );
+    private static final String DOCX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final String XLSX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
@@ -62,7 +67,7 @@ public class DocumentService {
         String fileName = normalizeFileName(file.getOriginalFilename());
         String extension = extensionOf(fileName);
         String contentType = file.getContentType() == null ? "application/octet-stream" : file.getContentType().toLowerCase();
-        if (!ALLOWED_EXTENSIONS.contains(extension) || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
+        if (!ALLOWED_EXTENSIONS.contains(extension) || !contentTypeMatchesExtension(extension, contentType)) {
             throw new DomainException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_DOCUMENT_TYPE",
                     "Only PDF, DOCX, TXT, and XLSX files are supported.");
         }
@@ -72,6 +77,10 @@ public class DocumentService {
             content = file.getBytes();
         } catch (IOException exception) {
             throw new DomainException(HttpStatus.BAD_REQUEST, "FILE_READ_FAILED", "The document could not be read.");
+        }
+        if (!contentMatchesExtension(extension, content)) {
+            throw new DomainException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_DOCUMENT_CONTENT",
+                    "The document content does not match its declared file type.");
         }
 
         String checksum = checksumOf(content);
@@ -171,6 +180,81 @@ public class DocumentService {
             return "";
         }
         return fileName.substring(dot + 1).toLowerCase();
+    }
+
+    private boolean contentTypeMatchesExtension(String extension, String contentType) {
+        return switch (extension) {
+            case "pdf" -> "application/pdf".equals(contentType);
+            case "docx" -> DOCX_CONTENT_TYPE.equals(contentType);
+            case "txt" -> "text/plain".equals(contentType);
+            case "xlsx" -> XLSX_CONTENT_TYPE.equals(contentType);
+            default -> false;
+        };
+    }
+
+    private boolean contentMatchesExtension(String extension, byte[] content) {
+        return switch (extension) {
+            case "pdf" -> startsWith(content, "%PDF-".getBytes(StandardCharsets.US_ASCII));
+            case "docx" -> isOfficeArchive(content, "word/document.xml");
+            case "xlsx" -> isOfficeArchive(content, "xl/workbook.xml");
+            case "txt" -> isUtf8Text(content);
+            default -> false;
+        };
+    }
+
+    private boolean startsWith(byte[] content, byte[] signature) {
+        if (content.length < signature.length) {
+            return false;
+        }
+        for (int index = 0; index < signature.length; index++) {
+            if (content[index] != signature[index]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isUtf8Text(byte[] content) {
+        try {
+            String text = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(content))
+                    .toString();
+            return !text.isBlank() && text.indexOf('\0') < 0;
+        } catch (CharacterCodingException exception) {
+            return false;
+        }
+    }
+
+    private boolean isOfficeArchive(byte[] content, String requiredDocumentEntry) {
+        if (content.length < 4 || content[0] != 'P' || content[1] != 'K') {
+            return false;
+        }
+        Set<String> entries = new HashSet<>();
+        long expandedBytes = 0;
+        int entryCount = 0;
+        byte[] buffer = new byte[8_192];
+        try (ZipInputStream archive = new ZipInputStream(new ByteArrayInputStream(content))) {
+            ZipEntry entry;
+            while ((entry = archive.getNextEntry()) != null) {
+                entryCount++;
+                if (entryCount > MAX_ARCHIVE_ENTRIES) {
+                    return false;
+                }
+                entries.add(entry.getName());
+                int read;
+                while ((read = archive.read(buffer)) != -1) {
+                    expandedBytes += read;
+                    if (expandedBytes > MAX_EXPANDED_ARCHIVE_BYTES) {
+                        return false;
+                    }
+                }
+            }
+        } catch (IOException exception) {
+            return false;
+        }
+        return entries.contains("[Content_Types].xml") && entries.contains(requiredDocumentEntry);
     }
 
     private String checksumOf(byte[] content) {

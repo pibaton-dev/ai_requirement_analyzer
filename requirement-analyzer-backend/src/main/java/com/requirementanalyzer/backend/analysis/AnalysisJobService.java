@@ -3,6 +3,8 @@ package com.requirementanalyzer.backend.analysis;
 import com.requirementanalyzer.backend.auth.UserAccount;
 import com.requirementanalyzer.backend.auth.UserAccountRepository;
 import com.requirementanalyzer.backend.common.DomainException;
+import com.requirementanalyzer.backend.document.Document;
+import com.requirementanalyzer.backend.document.DocumentRepository;
 import com.requirementanalyzer.backend.project.Project;
 import com.requirementanalyzer.backend.project.ProjectRepository;
 import org.springframework.data.domain.Page;
@@ -21,17 +23,22 @@ import java.util.UUID;
 public class AnalysisJobService {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_DOCUMENTS_PER_ANALYSIS = 10;
+    private static final long MAX_ANALYSIS_DOCUMENT_BYTES = 10L * 1024 * 1024;
 
     private final AnalysisJobRepository analysisJobRepository;
+    private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
     private final UserAccountRepository userRepository;
     private final AnalysisJobProcessor analysisJobProcessor;
 
     public AnalysisJobService(AnalysisJobRepository analysisJobRepository,
+                             DocumentRepository documentRepository,
                              ProjectRepository projectRepository,
                              UserAccountRepository userRepository,
                              AnalysisJobProcessor analysisJobProcessor) {
         this.analysisJobRepository = analysisJobRepository;
+        this.documentRepository = documentRepository;
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.analysisJobProcessor = analysisJobProcessor;
@@ -46,6 +53,23 @@ public class AnalysisJobService {
         List<UUID> documentIds = request == null || request.documentIds() == null ? List.of() : request.documentIds();
         if (normalizedText.isEmpty() && (documentIds == null || documentIds.isEmpty())) {
             throw new DomainException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Either text or at least one documentId is required.");
+        }
+        if (documentIds.size() > MAX_DOCUMENTS_PER_ANALYSIS
+                || documentIds.stream().distinct().count() != documentIds.size()) {
+            throw new DomainException(HttpStatus.BAD_REQUEST, "INVALID_DOCUMENT_SELECTION",
+                    "Select up to 10 distinct project documents for analysis.");
+        }
+        long selectedDocumentBytes = 0;
+        for (UUID documentId : documentIds) {
+            Document document = documentRepository
+                    .findByIdAndProject_IdAndProject_Owner_IdAndDeletedAtIsNull(documentId, projectId, ownerId)
+                    .orElseThrow(() -> new DomainException(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND",
+                            "A selected project document was not found."));
+            selectedDocumentBytes += document.getFileSize();
+            if (selectedDocumentBytes > MAX_ANALYSIS_DOCUMENT_BYTES) {
+                throw new DomainException(HttpStatus.PAYLOAD_TOO_LARGE, "ANALYSIS_DOCUMENTS_TOO_LARGE",
+                        "Selected documents must total 10MB or less.");
+            }
         }
 
         String idempotencyKey = request == null || request.idempotencyKey() == null || request.idempotencyKey().isBlank()

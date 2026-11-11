@@ -12,5 +12,8 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     Optional<Document> findByIdAndProject_Owner_IdAndDeletedAtIsNull(UUID documentId, UUID ownerId);
 
+    Optional<Document> findByIdAndProject_IdAndProject_Owner_IdAndDeletedAtIsNull(
+            UUID documentId, UUID projectId, UUID ownerId);
+
     boolean existsByProject_IdAndChecksumAndDeletedAtIsNull(UUID projectId, String checksum);
 }

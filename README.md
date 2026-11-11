@@ -10,7 +10,9 @@ The repository is organized into three independently buildable codebases:
 - `requirement-analyzer-backend/`: Java 21, Spring Boot, Maven.
 - `requirement-analyzer-ai-service/`: Python 3.12+, FastAPI, Pydantic, LangGraph.
 
-The platform scaffold, identity/session management, owner-scoped project and document APIs, asynchronous analysis, review/versioning domain, and frontend application are implemented. Current work is on Milestone 8: multi-format exports, critical journey verification, and operational hardening. See the [milestone plan](docs/FOUNDATION_DESIGN.md) and [deployment notes](docs/DEPLOYMENT.md).
+Milestones 1 and 2 are complete; Milestones 0 and 3–8 remain partial. Uploaded PDF, DOCX, TXT, and XLSX files are now parsed by the AI service, and analysis drafts are saved into the review workspace. Analysis currently uses a deterministic mock provider that generates one draft requirement; it is not a configured LLM or the full requirement-analysis workflow. See the [milestone comparison and remaining gaps](docs/FOUNDATION_DESIGN.md#12-milestones) and [deployment notes](docs/DEPLOYMENT.md).
+
+The largest remaining gaps are real provider/LangGraph integration; generation and persistence of stories, acceptance criteria, business rules, validation issues, questions, prioritization, and source references; retry/cancellation; full review and result views; and end-to-end/security/production hardening.
 
 ### Run locally
 
@@ -34,7 +36,7 @@ npm --prefix requirement-analyzer-frontend run build
 mvn -f requirement-analyzer-backend/pom.xml verify
 python3 -m venv requirement-analyzer-ai-service/.venv
 requirement-analyzer-ai-service/.venv/bin/python -m pip install -r requirement-analyzer-ai-service/requirements.txt
-requirement-analyzer-ai-service/.venv/bin/python -m pytest requirement-analyzer-ai-service/tests
+(cd requirement-analyzer-ai-service && .venv/bin/python -m pytest)
 ```
 
 CI runs the same codebase-specific checks. No production secrets or real LLM API key are needed for local verification.

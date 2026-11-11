@@ -2,37 +2,59 @@ package com.requirementanalyzer.backend.analysis;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.requirementanalyzer.backend.document.Document;
+import com.requirementanalyzer.backend.document.DocumentRepository;
+import com.requirementanalyzer.backend.document.DocumentStorage;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
 @Component
 public class AiAnalysisClient {
 
-    private final RestClient restClient;
+    private static final long MAX_DOCUMENT_BYTES = 10L * 1024 * 1024;
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(90);
+
+    private final String baseUrl;
+    private final String apiKey;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final DocumentRepository documentRepository;
+    private final DocumentStorage documentStorage;
 
     public AiAnalysisClient(@Value("${ai-service.base-url}") String baseUrl,
                             @Value("${ai-service.api-key}") String apiKey,
-                            ObjectMapper objectMapper) {
-        this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
-                .defaultHeader("X-Service-Token", apiKey)
+                            ObjectMapper objectMapper,
+                            DocumentRepository documentRepository,
+                            DocumentStorage documentStorage) {
+        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        this.apiKey = apiKey;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
                 .build();
         this.objectMapper = objectMapper;
+        this.documentRepository = documentRepository;
+        this.documentStorage = documentStorage;
     }
 
     public AiAnalysisResponse submitAnalysis(AnalysisJob job) {
+        List<UUID> documentIds = parseDocumentIds(job.getDocumentIds());
         AiAnalysisRequest request = new AiAnalysisRequest(
                 job.getProject().getId(),
                 job.getProject().getName(),
                 job.getText(),
-                parseDocumentIds(job.getDocumentIds())
+                documentIds,
+                loadDocuments(job, documentIds)
         );
         byte[] requestBody;
         try {
@@ -41,17 +63,31 @@ public class AiAnalysisClient {
             throw new IllegalStateException("Analysis request could not be encoded.", exception);
         }
 
-        var response = restClient.post()
-                .uri("/api/v1/analyze")
+        HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(baseUrl + "/api/v1/analyze"))
+                .timeout(REQUEST_TIMEOUT)
+                .header("X-Service-Token", apiKey)
                 .header("X-Correlation-ID", job.getCorrelationId())
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(requestBody)
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, (httpRequest, httpResponse) -> {
-                    throw new IllegalStateException("AI service returned status " + httpResponse.getStatusCode());
-                })
-                .body(AiAnalysisResponse.class);
-
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
+                .build();
+        HttpResponse<byte[]> httpResponse;
+        try {
+            httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofByteArray());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("AI service request was interrupted.", exception);
+        } catch (IOException exception) {
+            throw new IllegalStateException("AI service request could not be completed.", exception);
+        }
+        if (httpResponse.statusCode() < 200 || httpResponse.statusCode() >= 300) {
+            throw new IllegalStateException("AI service returned status " + httpResponse.statusCode());
+        }
+        AiAnalysisResponse response;
+        try {
+            response = objectMapper.readValue(httpResponse.body(), AiAnalysisResponse.class);
+        } catch (IOException exception) {
+            throw new IllegalStateException("AI service returned an invalid response.", exception);
+        }
         if (response == null) {
             throw new IllegalStateException("AI service returned an empty response.");
         }
@@ -70,12 +106,43 @@ public class AiAnalysisClient {
                 .toList();
     }
 
+    private List<DocumentInput> loadDocuments(AnalysisJob job, List<UUID> documentIds) {
+        List<DocumentInput> documents = new ArrayList<>(documentIds.size());
+        long totalBytes = 0;
+        for (UUID id : documentIds) {
+            Document document = documentRepository
+                    .findByIdAndProject_IdAndProject_Owner_IdAndDeletedAtIsNull(
+                            id, job.getProject().getId(), job.getOwner().getId())
+                    .orElseThrow(() -> new IllegalStateException("A selected project document is no longer available."));
+            try {
+                byte[] content = documentStorage.load(document.getStorageKey());
+                totalBytes += content.length;
+                if (content.length != document.getFileSize() || totalBytes > MAX_DOCUMENT_BYTES) {
+                    throw new IllegalStateException("Selected document content does not match the validated analysis limits.");
+                }
+                documents.add(new DocumentInput(
+                        id,
+                        document.getFileName(),
+                        document.getContentType(),
+                        Base64.getEncoder().encodeToString(content)
+                ));
+            } catch (IOException exception) {
+                throw new IllegalStateException("A selected project document could not be read for analysis.", exception);
+            }
+        }
+        return List.copyOf(documents);
+    }
+
     public record AiAnalysisRequest(
             UUID projectId,
             String projectName,
             String text,
-            List<UUID> documentIds
+            List<UUID> documentIds,
+            List<DocumentInput> documents
     ) {
+    }
+
+    public record DocumentInput(UUID documentId, String fileName, String contentType, String contentBase64) {
     }
 
     public record AiAnalysisResponse(

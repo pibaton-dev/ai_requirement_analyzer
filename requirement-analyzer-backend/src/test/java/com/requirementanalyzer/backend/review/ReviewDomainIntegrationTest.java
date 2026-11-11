@@ -1,6 +1,8 @@
 package com.requirementanalyzer.backend.review;
 
 import com.jayway.jsonpath.JsonPath;
+import com.requirementanalyzer.backend.analysis.AiAnalysisClient;
+import com.requirementanalyzer.backend.auth.UserAccountRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -9,12 +11,15 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import java.util.List;
+import java.util.UUID;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -23,6 +28,72 @@ class ReviewDomainIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ReviewDomainService reviewDomainService;
+
+    @Autowired
+    private UserAccountRepository userAccountRepository;
+
+    @Test
+    void successfulAnalysisResultsAreSavedToAnIdempotentReviewVersion() throws Exception {
+        String accessToken = register("review-import@example.com");
+        UUID ownerId = userAccountRepository.findByEmailIgnoreCase("review-import@example.com")
+                .orElseThrow().getId();
+        MvcResult projectResult = mockMvc.perform(post("/api/v1/projects")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Imported results project\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String projectId = JsonPath.read(projectResult.getResponse().getContentAsString(), "$.id");
+
+        MvcResult analysisResult = mockMvc.perform(post("/api/v1/projects/{projectId}/analyses", projectId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"Students can view attendance.\"}"))
+                .andExpect(status().isAccepted())
+                .andReturn();
+        String analysisJobId = JsonPath.read(analysisResult.getResponse().getContentAsString(), "$.id");
+
+        reviewDomainService.persistAnalysisResult(
+                ownerId,
+                UUID.fromString(projectId),
+                UUID.fromString(analysisJobId),
+                new AiAnalysisClient.AiAnalysisResponse(
+                        UUID.fromString(projectId),
+                        "Imported results project",
+                        "correlation-123",
+                        List.of(new AiAnalysisClient.Requirement(
+                                "FUNCTIONAL",
+                                "View attendance",
+                                "Students can view their attendance records.",
+                                "HIGH",
+                                0.8
+                        )),
+                        List.of(),
+                        "Attendance review"
+                )
+        );
+
+        MvcResult versionResult = mockMvc.perform(post(
+                                "/api/v1/projects/{projectId}/analyses/{analysisJobId}/versions",
+                                projectId,
+                                analysisJobId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.versionNumber").value(1))
+                .andReturn();
+        String versionId = JsonPath.read(versionResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/v1/projects/{projectId}/analysis-versions/{versionId}/review", projectId, versionId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requirements.length()").value(1))
+                .andExpect(jsonPath("$.requirements[0].requirementId").value("REQ-001"))
+                .andExpect(jsonPath("$.requirements[0].status").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.requirements[0].sourceType").value("AI_GENERATED"));
+    }
 
     @Test
     void ownerCanCreateReviewVersionAndManageRequirementsAndQuestions() throws Exception {
@@ -56,7 +127,8 @@ class ReviewDomainIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"requirementId\":\"REQ-001\",\"title\":\"Users sign in\",\"description\":\"Users must sign in to view reports.\",\"priority\":\"HIGH\",\"status\":\"PENDING_REVIEW\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
+                .andExpect(jsonPath("$.status").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.sourceType").value("MANUAL"));
 
         mockMvc.perform(put("/api/v1/projects/{projectId}/analysis-versions/{versionId}/requirements/REQ-001", projectId, versionId)
                         .header("Authorization", "Bearer " + accessToken)
